@@ -1,4 +1,4 @@
 # Port Scanner
 
 # How to use
- clone github......
+git clone https://github.com/mlchandran23/port-scanner.git
