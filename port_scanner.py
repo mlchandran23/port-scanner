@@ -2,10 +2,10 @@ import json
 import socket
 import asyncio
 from datetime import datetime
-
+import os
 
 TARGET = "127.0.0.1" #IPv4 loopback
-#TARGET = "192.168.1.67"
+TARGET = "192.168.1.67"
 
 # list of known ports
 COMMON_PORTS={
@@ -70,7 +70,8 @@ async def port_scan(ports):
 
 
 def save_to_json(scan_data):
-    filename="scan_results.json"
+    os.makedirs("output", exist_ok=True)
+    filename = f"output/scan_{TARGET.replace(".", "-")}.json"
     try:
         with open(filename, "w") as f:
             json.dump(scan_data, f, indent=4)
