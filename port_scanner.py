@@ -70,9 +70,15 @@ async def port_scan(ports):
 
 
 def save_to_json(scan_data):
+
+    # make sure directory exists
     os.makedirs("output", exist_ok=True)
+
+    # set file name based on target ip
     filename = f"output/scan_{TARGET.replace(".", "-")}.json"
+
     try:
+        #write to file
         with open(filename, "w") as f:
             json.dump(scan_data, f, indent=4)
         print(f"\nResults saved to {filename}")
@@ -116,7 +122,7 @@ def main():
     for port in open_ports:
         print(f"Port Number:{port["port"]}, Protocol: {port["protocol"]}, Banner: {port["banner"]}")
     
-    #save to output file
+    #save results to output file
     print("Writing results to scan_results.json")
     save_to_json(scan_data)
     
