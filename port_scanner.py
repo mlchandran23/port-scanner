@@ -1,8 +1,14 @@
+import json
 import socket
-import threading
-from concurrent.futures import ThreadPoolExecutor
+import asyncio
+from datetime import datetime
 
-PORTS={
+
+TARGET = "127.0.0.1" #IPv4 loopback
+#TARGET = "192.168.1.67"
+
+# list of known ports
+COMMON_PORTS={
     21: "FTP",
     22: "SSH",
     23: "Telnet",
@@ -16,74 +22,102 @@ PORTS={
     3389: "RDP"
 }
 
-#TARGET = "127.0.0.1" #IPv4 loopback
-TARGET = "192.168.1.67"
 open_ports = []
-lock = threading.Lock()
+semaphore = asyncio.Semaphore(500)
 
-def grab_banner(port):
+async def grab_banner(reader, writer, port):
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(1)
-            s.connect((TARGET, port))
-
-            # Try passive grab first
-            try:
-                banner = s.recv(1024)
-                if banner:
-                    return banner.decode(errors="ignore").strip()
-            except:
-                pass
-
-            # Try active HTTP probe
-            if port == 80:
-                http_request = b"GET / HTTP/1.1\r\nHost: %b\r\n\r\n" % TARGET.encode()
-                s.send(http_request)
-                response = s.recv(1024)
-                return response.decode(errors="ignore").strip()
-
+        try:
+            data = await asyncio.wait_for(reader.read(1024), timeout=1)
+            if data:
+                banner = data.decode(errors="ignore").strip()
+                return banner
+        except:
+            pass
+ 
     except:
         return None
-
     return None
 
-def scan_port(port):
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(0.5)
-            status = s.connect_ex((TARGET, port))
+async def scan_port(port):
+    async with semaphore:
+        service = COMMON_PORTS.get(port, "Unknown")
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(TARGET, port),
+                timeout=1
+            )
 
-            if status == 0:
-                print(f"{PORTS[port]} is OPEN on port {port}")
-                banner = grab_banner(port)
-                if banner:
-                    print(f"  Banner: {banner[:100]}")
-                with lock:
-                    open_ports.append(port)
-            else:
-                print()
-                #print(f"{PORTS[port]} is CLOSED on port {port}")
+            print(f"Port {port} is OPEN")
+
+            banner = await grab_banner(reader, writer, port)
+
+            open_ports.append({
+                "port": port,
+                "protocol": service,
+                "banner": banner
+            })
+
+            writer.close()
+            await writer.wait_closed()
+        except:
+            print(f"Port {port} is CLOSED")
+
+async def port_scan(ports):
+    print("Scanning ports:")
+    tasks = [scan_port(port) for port in ports]
+    await asyncio.gather(*tasks)
+
+
+def save_to_json(scan_data):
+    filename="scan_results.json"
+    try:
+        with open(filename, "w") as f:
+            json.dump(scan_data, f, indent=4)
+        print(f"\nResults saved to {filename}")
     except Exception as e:
-        print(f"Error scanning port {port}: {e}")
+        print(f"Error saving file: {e}")
 
 def main():
-    # multithreading
-    try:
-        num_threads = 8#int(input("How many threads:"))
-        print("Scanning ports...")
-        with ThreadPoolExecutor(max_workers=num_threads) as executor:
-            executor.map(scan_port, PORTS.keys())
 
-        print("Scanning done.")
-        print("-------------------------------------")
-        print("All open ports:")
-        for port in open_ports:
-            print(f"{port}: {PORTS[port]}")
+    #get ip address
+    
 
-    except ValueError:
-        print("Invalid int")
+    #get scan option
+    while True:
+        option = input(
+            "\nSelect scan type:\n"
+            "1. Common ports\n"
+            "2. Full scan (1–65535)\n"
+            "Enter option: "
+        )
 
-        
+        if option == "1":
+            asyncio.run(port_scan(COMMON_PORTS))
+            break
+        elif option == "2":
+            asyncio.run(port_scan(range(1, 65536)))
+            break
+        else:
+            print("Invalid option. Please enter 1 or 2.")
+    
+    # done scanning
+    scan_data = {
+    "target": TARGET,
+    "timestamp": datetime.now().isoformat(),
+    "results": open_ports
+    }
+
+    #print results
+    print("Scanning done.")
+    print("-------------------------------------")
+    print("All Open Ports:")
+    for port in open_ports:
+        print(f"Port Number:{port["port"]}, Protocol: {port["protocol"]}, Banner: {port["banner"]}")
+    
+    #save to output file
+    print("Writing results to scan_results.json")
+    save_to_json(scan_data)
     
 if __name__ == "__main__":
     main()
