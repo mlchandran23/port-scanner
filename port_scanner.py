@@ -3,10 +3,11 @@ import socket
 import asyncio
 from datetime import datetime
 import os
+from getmac import get_mac_address
 
-TARGET = "127.0.0.1" #IPv4 loopback
-TARGET = "192.168.1.67"
-
+#TARGET = "127.0.0.1" #IPv4 loopback
+#TARGET = "192.168.1.67"
+#TARGET = "192.168.1.1"
 # list of known ports
 COMMON_PORTS={
     21: "FTP",
@@ -39,7 +40,7 @@ async def grab_banner(reader, writer, port):
         return None
     return None
 
-async def scan_port(port):
+async def scan_port(port, TARGET):
     async with semaphore:
         service = COMMON_PORTS.get(port, "Unknown")
         try:
@@ -48,7 +49,7 @@ async def scan_port(port):
                 timeout=1
             )
 
-            print(f"Port {port} is OPEN")
+            #print(f"Port {port} is OPEN")
 
             banner = await grab_banner(reader, writer, port)
 
@@ -60,16 +61,19 @@ async def scan_port(port):
 
             writer.close()
             await writer.wait_closed()
+        #port is closed
         except:
-            print(f"Port {port} is CLOSED")
+            #print(f"Port {port} is CLOSED")
+            pass
 
-async def port_scan(ports):
-    print("Scanning ports:")
-    tasks = [scan_port(port) for port in ports]
+async def port_scan(ports, TARGET):
+    print("-------------------------------------")
+    print(f"SCANNING PORTS for {TARGET}:")
+    tasks = [scan_port(port, TARGET) for port in ports]
     await asyncio.gather(*tasks)
 
 
-def save_to_json(scan_data):
+def save_to_json(scan_data, TARGET):
 
     # make sure directory exists
     os.makedirs("output", exist_ok=True)
@@ -85,29 +89,19 @@ def save_to_json(scan_data):
     except Exception as e:
         print(f"Error saving file: {e}")
 
-def main():
+def find_mac_address(TARGET):
+    return get_mac_address(ip=TARGET)
 
-    #get ip address
+def main(TARGET, option):
+
+    if option == 1:
+        asyncio.run(port_scan(COMMON_PORTS, TARGET))
+    elif option == 2:
+        asyncio.run(port_scan(range(1, 65536), TARGET))
+    elif option == 3:
+        print(f"MAC Address of Target {TARGET} is: {find_mac_address(TARGET)}")
     
 
-    #get scan option
-    while True:
-        option = input(
-            "\nSelect scan type:\n"
-            "1. Common ports\n"
-            "2. Full scan (1–65535)\n"
-            "Enter option: "
-        )
-
-        if option == "1":
-            asyncio.run(port_scan(COMMON_PORTS))
-            break
-        elif option == "2":
-            asyncio.run(port_scan(range(1, 65536)))
-            break
-        else:
-            print("Invalid option. Please enter 1 or 2.")
-    
     # done scanning
     scan_data = {
     "target": TARGET,
@@ -115,16 +109,13 @@ def main():
     "results": open_ports
     }
 
-    #print results
-    print("Scanning done.")
-    print("-------------------------------------")
-    print("All Open Ports:")
-    for port in open_ports:
-        print(f"Port Number:{port["port"]}, Protocol: {port["protocol"]}, Banner: {port["banner"]}")
+    # #print results
+    # print("SCANNING DONE")
+    # print("-------------------------------------")
+    # print("ALL OPEN PORTS:")
+    # for port in open_ports:
+    #     print(f"Port Number:{port["port"]}, Protocol: {port["protocol"]}, Banner: {port["banner"]}")
     
     #save results to output file
     print("Writing results to scan_results.json")
-    save_to_json(scan_data)
-    
-if __name__ == "__main__":
-    main()
+    save_to_json(scan_data, TARGET)
